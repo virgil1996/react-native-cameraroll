@@ -123,33 +123,65 @@ RCT_EXPORT_MODULE()
     PHImageRequestOptions *const requestOptions = [PHImageRequestOptions new];
     requestOptions.networkAccessAllowed = YES;
 
-    [[PHImageManager defaultManager] requestImageDataForAsset:asset
+    NSArray<NSURLQueryItem *> *queryItems = [NSURLComponents componentsWithURL:requestURL resolvingAgainstBaseURL:NO].queryItems;
+        NSURLQueryItem *const thumbnail = [[queryItems filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"name == %@", @"thumbnail"]] firstObject];
+        if (thumbnail && [thumbnail.value isEqual: @"true"]) {
+            requestOptions.deliveryMode = PHImageRequestOptionsDeliveryModeFastFormat;
+            requestOptions.resizeMode = PHImageRequestOptionsResizeModeFast;
+            
+            [[PHCachingImageManager new] requestImageForAsset:asset
+                                                   targetSize:PHImageManagerMaximumSize
+                                                  contentMode:PHImageContentModeAspectFit
                                                       options:requestOptions
-                                                resultHandler:^(NSData * _Nullable imageData,
-                                                                NSString * _Nullable dataUTI,
-                                                                UIImageOrientation orientation,
+                                                resultHandler:^(UIImage * _Nullable result,
                                                                 NSDictionary * _Nullable info) {
-      NSError *const error = [info objectForKey:PHImageErrorKey];
-      if (error) {
-        [delegate URLRequest:cancellationBlock didCompleteWithError:error];
-        return;
-      }
+                NSError *const error = [info objectForKey:PHImageErrorKey];
+                   if (error) {
+                       [delegate URLRequest:cancellationBlock didCompleteWithError:error];
+                       return;
+                   }
+                NSData *imageData = UIImagePNGRepresentation(result);
+                NSInteger const length = [imageData length];
+                NSString *const mimeType = @""; // TODO: how to get mimeType?
+                
+                NSURLResponse *const response = [[NSURLResponse alloc] initWithURL:request.URL
+                                                                                      MIMEType:mimeType
+                                                                         expectedContentLength:length
+                                                                              textEncodingName:nil];
+                [delegate URLRequest:cancellationBlock didReceiveResponse:response];
+                
+                [delegate URLRequest:cancellationBlock didReceiveData:imageData];
+                [delegate URLRequest:cancellationBlock didCompleteWithError:nil];
+            }];
+        } else {
+            [[PHImageManager defaultManager] requestImageDataForAsset:asset
+                                                              options:requestOptions
+                                                        resultHandler:^(NSData * _Nullable imageData,
+                                                                        NSString * _Nullable dataUTI,
+                                                                        UIImageOrientation orientation,
+                                                                        NSDictionary * _Nullable info) {
+                NSError *const error = [info objectForKey:PHImageErrorKey];
+                if (error) {
+                    [delegate URLRequest:cancellationBlock didCompleteWithError:error];
+                    return;
+                }
 
-      NSInteger const length = [imageData length];
-      CFStringRef const dataUTIStringRef = (__bridge CFStringRef _Nonnull)(dataUTI);
-      CFStringRef const mimeType = UTTypeCopyPreferredTagWithClass(dataUTIStringRef, kUTTagClassMIMEType);
+                NSInteger const length = [imageData length];
+                CFStringRef const dataUTIStringRef = (__bridge CFStringRef _Nonnull)(dataUTI);
+                CFStringRef const mimeType = UTTypeCopyPreferredTagWithClass(dataUTIStringRef, kUTTagClassMIMEType);
 
-      NSURLResponse *const response = [[NSURLResponse alloc] initWithURL:request.URL
-                                                                MIMEType:(__bridge NSString *)(mimeType)
-                                                   expectedContentLength:length
-                                                        textEncodingName:nil];
-      if (mimeType) CFRelease(mimeType);
+                NSURLResponse *const response = [[NSURLResponse alloc] initWithURL:request.URL
+                                                                          MIMEType:(__bridge NSString *)(mimeType)
+                                                             expectedContentLength:length
+                                                                  textEncodingName:nil];
+                if (mimeType) CFRelease(mimeType);
 
-      [delegate URLRequest:cancellationBlock didReceiveResponse:response];
+                [delegate URLRequest:cancellationBlock didReceiveResponse:response];
 
-      [delegate URLRequest:cancellationBlock didReceiveData:imageData];
-      [delegate URLRequest:cancellationBlock didCompleteWithError:nil];
-    }];
+                [delegate URLRequest:cancellationBlock didReceiveData:imageData];
+                [delegate URLRequest:cancellationBlock didCompleteWithError:nil];
+            }];
+        }
   }
   
   return cancellationBlock;
